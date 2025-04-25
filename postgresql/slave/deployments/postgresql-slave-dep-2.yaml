@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgresql-slave-2
+  labels:
+    component: postgresql-slave
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      component: postgresql-slave-2
+  template:
+    metadata:
+      labels:
+        component: postgresql-slave-2
+    spec:
+      containers:
+        - name: postgresql
+          image: postgres:16
+          command:
+            - sh
+            - -c
+            - |
+              echo "primary_conninfo = 'host=postgresql-master port=5432 user=tuan password=20226100 application_name=slave2'" > /var/lib/postgresql/data/postgresql.auto.conf
+              echo "primary_slot_name = 'replica_slot_2'" >> /var/lib/postgresql/data/postgresql.auto.conf
+              touch /var/lib/postgresql/data/standby.signal
+              chown postgres:postgres /var/lib/postgresql/data/standby.signal
+              cp /etc/postgresql/postgresql-slave.conf /var/lib/postgresql/data/postgresql.conf
+              cp /etc/postgresql/pg_hba.conf /var/lib/postgresql/data/pg_hba.conf
+              exec docker-entrypoint.sh postgres
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - configMapRef:
+                name: postgresql-auth
+          volumeMounts:
+            - mountPath: /var/lib/postgresql/data
+              name: postgresql-data
+            - mountPath: /etc/postgresql
+              name: postgresql-slave-configmap
+      volumes:
+        - name: postgresql-slave-configmap
+          configMap:
+            name: postgresql-slave-configmap
+        - name: postgresql-data
+          persistentVolumeClaim:
+            claimName: postgresql-data-slave-2
