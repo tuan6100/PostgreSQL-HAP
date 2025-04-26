@@ -1,0 +1,152 @@
+=== PostgreSQL Benchmark Testing ===
+Master: localhost:5432
+Slave 0: localhost:30432
+Slave 1: localhost:30433
+Slave 2: localhost:30434
+Checking max_connections...
+Max connections: 300, Safe connections: 240
+Creating test database...
+dropping old tables...
+creating tables...
+generating data (client-side)...
+1000000 of 1000000 tuples (100%) done (elapsed 0.43 s, remaining 0.00 s)
+vacuuming...
+creating primary keys...
+done in 1.52 s (drop tables 0.03 s, create tables 0.00 s, client-side generate 1.04 s, vacuum 0.14 s, primary keys 0.31 s).
+
+=== Test 1: Write-heavy load on master (100 clients) ===
+pgbench (16.3, server 16.8 (Debian 16.8-1.pgdg120+1))
+starting vacuum...end.
+progress: 10.0 s, 2065.3 tps, lat 45.856 ms stddev 51.375, 0 failed
+progress: 20.0 s, 2094.7 tps, lat 47.877 ms stddev 57.344, 0 failed
+progress: 30.0 s, 2114.6 tps, lat 47.158 ms stddev 56.090, 0 failed
+transaction type: <builtin: TPC-B (sort of)>
+scaling factor: 10
+query mode: simple
+number of clients: 100
+number of threads: 4
+maximum number of tries: 1
+duration: 30 s
+number of transactions actually processed: 62844
+number of failed transactions: 0 (0.000%)
+latency average = 47.102 ms
+latency stddev = 55.169 ms
+initial connection time = 459.352 ms
+tps = 2118.168768 (without initial connection time)
+
+=== Test 2: Read-only load on slave 0 (100 clients) ===
+pgbench (16.3, server 16.8 (Debian 16.8-1.pgdg120+1))
+starting vacuum...pgbench: error: ERROR:  cannot execute VACUUM during recovery
+pgbench: detail: (ignoring this error and continuing anyway)
+pgbench: error: ERROR:  cannot execute VACUUM during recovery
+pgbench: detail: (ignoring this error and continuing anyway)
+pgbench: error: ERROR:  cannot execute TRUNCATE TABLE in a read-only transaction
+pgbench: detail: (ignoring this error and continuing anyway)
+end.
+progress: 10.0 s, 18191.1 tps, lat 5.321 ms stddev 11.998, 0 failed
+progress: 20.0 s, 19393.9 tps, lat 5.152 ms stddev 8.439, 0 failed
+progress: 30.0 s, 19651.4 tps, lat 5.085 ms stddev 8.572, 0 failed
+transaction type: <builtin: select only>
+scaling factor: 10
+query mode: simple
+number of clients: 100
+number of threads: 4
+maximum number of tries: 1
+duration: 30 s
+number of transactions actually processed: 572467
+number of failed transactions: 0 (0.000%)
+latency average = 5.184 ms
+latency stddev = 9.753 ms
+initial connection time = 307.382 ms
+tps = 19251.216663 (without initial connection time)
+
+=== Test 3: Distributed read load across all slaves (100 clients each) ===
+progress: 10.0 s, 5357.1 tps, lat 17.226 ms stddev 42.783, 0 failed
+progress: 10.0 s, 4867.2 tps, lat 19.015 ms stddev 45.613, 0 failed
+progress: 10.0 s, 4571.5 tps, lat 20.289 ms stddev 58.334, 0 failed
+progress: 20.0 s, 5398.8 tps, lat 18.520 ms stddev 34.720, 0 failed
+progress: 20.0 s, 5356.5 tps, lat 18.646 ms stddev 40.301, 0 failed
+progress: 20.0 s, 5547.5 tps, lat 18.014 ms stddev 33.549, 0 failed
+progress: 30.0 s, 6227.7 tps, lat 15.971 ms stddev 34.107, 0 failed
+progress: 30.0 s, 5718.6 tps, lat 17.430 ms stddev 34.660, 0 failed
+progress: 30.0 s, 5367.7 tps, lat 18.551 ms stddev 35.286, 0 failed
+transaction type: <builtin: select only>
+scaling factor: 10
+query mode: simple
+number of clients: 100
+number of threads: 4
+maximum number of tries: 1
+duration: 30 s
+number of transactions actually processed: 159522
+number of failed transactions: 0 (0.000%)
+latency average = 18.383 ms
+latency stddev = 40.244 ms
+initial connection time = 729.553 ms
+tps = 5407.325444 (without initial connection time)
+transaction type: <builtin: select only>
+scaling factor: 10
+query mode: simple
+number of clients: 100
+number of threads: 4
+maximum number of tries: 1
+duration: 30 s
+number of transactions actually processed: 154954
+number of failed transactions: 0 (0.000%)
+latency average = 18.928 ms
+latency stddev = 42.974 ms
+initial connection time = 714.019 ms
+tps = 5248.624782 (without initial connection time)
+transaction type: <builtin: select only>
+scaling factor: 10
+query mode: simple
+number of clients: 100
+number of threads: 4
+maximum number of tries: 1
+duration: 30 s
+number of transactions actually processed: 169936
+number of failed transactions: 0 (0.000%)
+latency average = 17.262 ms
+latency stddev = 37.472 ms
+initial connection time = 752.705 ms
+tps = 5738.483836 (without initial connection time)
+
+=== Test 4: Maximum safe load on master (240 clients) ===
+pgbench (16.3, server 16.8 (Debian 16.8-1.pgdg120+1))
+starting vacuum...end.
+progress: 10.0 s, 1727.5 tps, lat 127.452 ms stddev 141.649, 0 failed
+progress: 20.0 s, 1920.6 tps, lat 125.412 ms stddev 142.233, 0 failed
+progress: 30.0 s, 2006.5 tps, lat 119.309 ms stddev 135.190, 0 failed
+transaction type: <builtin: TPC-B (sort of)>
+scaling factor: 10
+query mode: simple
+number of clients: 240
+number of threads: 8
+maximum number of tries: 1
+duration: 30 s
+number of transactions actually processed: 56785
+number of failed transactions: 0 (0.000%)
+latency average = 124.457 ms
+latency stddev = 140.077 ms
+initial connection time = 670.339 ms
+tps = 1919.620875 (without initial connection time)
+
+=== Test 5: Mixed read-write workload (70% select, 30% update) ===
+pgbench (16.3, server 16.8 (Debian 16.8-1.pgdg120+1))
+starting vacuum...end.
+progress: 10.0 s, 1681.5 tps, lat 57.026 ms stddev 61.017, 0 failed
+progress: 20.0 s, 1667.9 tps, lat 59.949 ms stddev 71.003, 0 failed
+progress: 30.0 s, 1709.3 tps, lat 58.705 ms stddev 68.215, 0 failed
+transaction type: custom_script.sql
+scaling factor: 1
+query mode: simple
+number of clients: 100
+number of threads: 4
+maximum number of tries: 1
+duration: 30 s
+number of transactions actually processed: 50687
+number of failed transactions: 0 (0.000%)
+latency average = 58.634 ms
+latency stddev = 66.878 ms
+initial connection time = 324.196 ms
+tps = 1700.745554 (without initial connection time)
+Benchmarking complete!
