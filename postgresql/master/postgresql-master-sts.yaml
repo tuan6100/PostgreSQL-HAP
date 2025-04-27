@@ -20,7 +20,11 @@ spec:
           command:
             - sh
             - -c
-            - docker-entrypoint.sh -c config_file=/etc/postgresql/postgresql.conf -c hba_file=/etc/postgresql/pg_hba.conf
+            - |
+              mkdir -p /var/lib/postgresql/data/pg_log
+              chown -R postgres:postgres /var/lib/postgresql/data/pg_log
+              chmod 700 /var/lib/postgresql/data/pg_log
+              docker-entrypoint.sh -c config_file=/etc/postgresql/postgresql.conf -c hba_file=/etc/postgresql/pg_hba.conf
           ports:
             - containerPort: 5432
           envFrom:
@@ -31,10 +35,40 @@ spec:
               name: postgresql-data-master
             - mountPath: /etc/postgresql
               name: postgresql-master-configmap
+
+        - name: filebeat
+          image: docker.elastic.co/beats/filebeat:7.17.7
+          args: ["-c", "/etc/filebeat.yml", "-e"]
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          securityContext:
+            runAsUser: 0
+          resources:
+            limits:
+              memory: 200Mi
+            requests:
+              cpu: 100m
+              memory: 100Mi
+          volumeMounts:
+            - name: filebeat-config
+              mountPath: /etc/filebeat.yml
+              readOnly: true
+              subPath: filebeat.yml
+            - name: postgresql-data-master
+              mountPath: /var/lib/postgresql/data
+              readOnly: true
+
       volumes:
         - name: postgresql-master-configmap
           configMap:
             name: postgresql-master-configmap
+        - name: filebeat-config
+          configMap:
+            name: filebeat-postgresql-config
+
   volumeClaimTemplates:
     - metadata:
         name: postgresql-data-master

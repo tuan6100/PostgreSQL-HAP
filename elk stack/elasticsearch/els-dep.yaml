@@ -32,4 +32,5 @@ spec:
               mountPath: /usr/share/elasticsearch/data
       volumes:
         - name: elasticsearch-data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: elasticsearch-pvc

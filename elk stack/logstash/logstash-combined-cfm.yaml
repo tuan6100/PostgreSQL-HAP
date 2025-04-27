@@ -1,11 +1,17 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: logstash-jdbc-config
+  name: logstash-combined-config
   namespace: elk-stack
 data:
   logstash.conf: |-
     input {
+      # Nhận log từ Filebeat
+      beats {
+        port => 5044
+        tags => ["filebeat", "postgresql_logs"]
+      }
+    
       jdbc {
         jdbc_connection_string => "jdbc:postgresql://postgresql-master.default:5432/postgres"
         jdbc_user => "tuan"
@@ -13,7 +19,7 @@ data:
         jdbc_driver_library => "/usr/share/logstash/postgresql-42.7.5.jar"
         jdbc_driver_class => "org.postgresql.Driver"
         statement => "SELECT datid, usename, application_name, client_addr::text, backend_start, query_start, state, query FROM pg_stat_activity"
-        schedule => "*/10 * * * * *"
+        schedule => "0 * * * *"
         tags => ["postgresql_activity"]
       }
     
@@ -24,7 +30,7 @@ data:
         jdbc_driver_library => "/usr/share/logstash/postgresql-42.7.5.jar"
         jdbc_driver_class => "org.postgresql.Driver"
         statement => "SELECT datname, xact_commit, xact_rollback, blks_read, blks_hit, tup_returned, tup_fetched, tup_inserted, tup_updated, tup_deleted FROM pg_stat_database WHERE datname NOT LIKE 'template%'"
-        schedule => "*/10 * * * * *"
+        schedule => "0 * * * *"
         tags => ["postgresql_stats"]
       }
     
@@ -35,11 +41,10 @@ data:
         jdbc_driver_library => "/usr/share/logstash/postgresql-42.7.5.jar"
         jdbc_driver_class => "org.postgresql.Driver"
         statement => "SELECT now() as timestamp, pg_current_wal_lsn()::text as current_wal_lsn, version() as version"
-        schedule => "*/10 * * * * *"
+        schedule => "0 * * * *"
         tags => ["postgresql_info"]
       }
     
-      # For replication monitoring (if using replication)
       jdbc {
         jdbc_connection_string => "jdbc:postgresql://postgresql-master.default:5432/postgres"
         jdbc_user => "tuan"
@@ -47,15 +52,65 @@ data:
         jdbc_driver_library => "/usr/share/logstash/postgresql-42.7.5.jar"
         jdbc_driver_class => "org.postgresql.Driver"
         statement => "SELECT usename, application_name, client_addr::text, state, sent_lsn::text, write_lsn::text, flush_lsn::text, replay_lsn::text, write_lag::text, flush_lag::text, replay_lag::text, sync_state FROM pg_stat_replication"
-        schedule => "*/5 * * * * *"
+        schedule => "0 * * * *"
         tags => ["postgresql_replication"]
       }
     }
     
     filter {
+      if "postgresql_logs" in [tags] {
+        grok {
+          match => { "message" => "^%{TIMESTAMP_ISO8601:timestamp} \[%{NUMBER:pid}\] %{WORD:log_level}:  %{GREEDYDATA:log_message}" }
+        }
+        if [log_message] =~ "statement:" {
+          grok {
+            match => { "log_message" => ".*statement: (?<sql_query>.*)" }
+          }
+          if [sql_query] =~ "^SELECT" {
+            mutate { add_field => { "query_type" => "SELECT" } }
+          } else if [sql_query] =~ "^INSERT" {
+            mutate { add_field => { "query_type" => "INSERT" } }
+          } else if [sql_query] =~ "^UPDATE" {
+            mutate { add_field => { "query_type" => "UPDATE" } }
+          } else if [sql_query] =~ "^DELETE" {
+            mutate { add_field => { "query_type" => "DELETE" } }
+          } else if [sql_query] =~ "^(CREATE|ALTER|DROP|TRUNCATE)" {
+            mutate { add_field => { "query_type" => "DDL" } }
+          } else {
+            mutate { add_field => { "query_type" => "OTHER" } }
+          }
+        }
+
+        if [log_message] =~ "connection received" {
+          mutate { add_field => { "event_type" => "connection" } }
+        } else if [log_message] =~ "disconnection" {
+          mutate { add_field => { "event_type" => "disconnection" } }
+        }
+    
+        if [log_level] == "ERROR" {
+          mutate { add_field => { "event_type" => "error" } }
+        }
+      }
+    
       if [tags] == ["postgresql_activity"] {
         mutate {
           remove_field => ["@version", "type"]
+        }
+      }
+    
+      if [tags] == ["postgresql_stats"] {
+        mutate {
+          convert => {
+            "xact_commit" => "integer"
+            "xact_rollback" => "integer"
+            "blks_read" => "integer"
+            "blks_hit" => "integer"
+            "tup_returned" => "integer"
+            "tup_fetched" => "integer"
+            "tup_inserted" => "integer"
+            "tup_updated" => "integer"
+            "tup_deleted" => "integer"
+          }
         }
       }
     
@@ -66,9 +121,17 @@ data:
     }
     
     output {
-      elasticsearch {
-        hosts => ["http://elasticsearch-service.elk-stack:9200"]
-        index => "postgresql-%{+YYYY.MM.dd}"
+      if "postgresql_logs" in [tags] {
+        elasticsearch {
+          hosts => ["http://elasticsearch-service.elk-stack:9200"]
+          index => "postgresql-logs-%{+YYYY.MM.dd}"
+        }
+      } else {
+        elasticsearch {
+          hosts => ["http://elasticsearch-service.elk-stack:9200"]
+          index => "postgresql-%{+YYYY.MM.dd}"
+        }
       }
+    
       stdout { codec => rubydebug }
     }

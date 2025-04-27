@@ -37,6 +37,8 @@ spec:
             - name: XPACK_MONITORING_ELASTICSEARCH_HOSTS
               value: http://elasticsearch-service.elk-stack:9200
           ports:
+            - containerPort: 5044
+              name: beats
             - containerPort: 9600
               name: monitoring
           command:
@@ -77,7 +79,7 @@ spec:
       volumes:
         - name: logstash-pipeline
           configMap:
-            name: logstash-jdbc-config
+            name: logstash-combined-config
         - name: logstash-config
           configMap:
             name: logstash-config

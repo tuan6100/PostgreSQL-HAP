@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebeat-postgresql-config
+data:
+  filebeat.yml: |-
+    filebeat.inputs:
+      - type: log
+        enabled: true
+        paths:
+          - /var/lib/postgresql/data/pg_log/*.log
+        fields:
+          log_type: postgresql
+          kubernetes.pod.name: "postgresql-master-0"
+          kubernetes.namespace: "default"
+          kubernetes.container.name: "postgresql"
+        fields_under_root: true
+        multiline:
+          pattern: '^\d{4}-\d{2}-\d{2}'
+          negate: true
+          match: after
+
+    processors:
+      - add_kubernetes_metadata:
+          host: ${NODE_NAME}
+          in_cluster: true
+          # Không dùng logs_path matcher nữa vì không cần thiết
+      - drop_fields:
+          fields: ["agent", "ecs", "input", "log"]
+          ignore_missing: true
+
+    output.logstash:
+      hosts: ["logstash-service.elk-stack.svc.cluster.local:5044"]
+      loadbalance: true
+      # Thêm setting timeout để tăng độ ổn định
+      timeout: 30s
