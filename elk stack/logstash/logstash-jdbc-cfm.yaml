@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: logstash-jdbc-config
+  namespace: elk-stack
+data:
+  logstash.conf: |-
+    input {
+      jdbc {
+        jdbc_connection_string => "jdbc:postgresql://postgresql-master.default:5432/postgres"
+        jdbc_user => "tuan"
+        jdbc_password => "20226100"
+        jdbc_driver_library => "/usr/share/logstash/postgresql-42.7.5.jar"
+        jdbc_driver_class => "org.postgresql.Driver"
+        statement => "SELECT datid, usename, application_name, client_addr::text, backend_start, query_start, state, query FROM pg_stat_activity"
+        schedule => "*/10 * * * * *"
+        tags => ["postgresql_activity"]
+      }
+    
+      jdbc {
+        jdbc_connection_string => "jdbc:postgresql://postgresql-master.default:5432/postgres"
+        jdbc_user => "tuan"
+        jdbc_password => "20226100"
+        jdbc_driver_library => "/usr/share/logstash/postgresql-42.7.5.jar"
+        jdbc_driver_class => "org.postgresql.Driver"
+        statement => "SELECT datname, xact_commit, xact_rollback, blks_read, blks_hit, tup_returned, tup_fetched, tup_inserted, tup_updated, tup_deleted FROM pg_stat_database WHERE datname NOT LIKE 'template%'"
+        schedule => "*/10 * * * * *"
+        tags => ["postgresql_stats"]
+      }
+    
+      jdbc {
+        jdbc_connection_string => "jdbc:postgresql://postgresql-master.default:5432/postgres"
+        jdbc_user => "tuan"
+        jdbc_password => "20226100"
+        jdbc_driver_library => "/usr/share/logstash/postgresql-42.7.5.jar"
+        jdbc_driver_class => "org.postgresql.Driver"
+        statement => "SELECT now() as timestamp, pg_current_wal_lsn()::text as current_wal_lsn, version() as version"
+        schedule => "*/10 * * * * *"
+        tags => ["postgresql_info"]
+      }
+    
+      # For replication monitoring (if using replication)
+      jdbc {
+        jdbc_connection_string => "jdbc:postgresql://postgresql-master.default:5432/postgres"
+        jdbc_user => "tuan"
+        jdbc_password => "20226100"
+        jdbc_driver_library => "/usr/share/logstash/postgresql-42.7.5.jar"
+        jdbc_driver_class => "org.postgresql.Driver"
+        statement => "SELECT usename, application_name, client_addr::text, state, sent_lsn::text, write_lsn::text, flush_lsn::text, replay_lsn::text, write_lag::text, flush_lag::text, replay_lag::text, sync_state FROM pg_stat_replication"
+        schedule => "*/5 * * * * *"
+        tags => ["postgresql_replication"]
+      }
+    }
+    
+    filter {
+      if [tags] == ["postgresql_activity"] {
+        mutate {
+          remove_field => ["@version", "type"]
+        }
+      }
+    
+      date {
+        match => ["timestamp", "ISO8601"]
+        target => "@timestamp"
+      }
+    }
+    
+    output {
+      elasticsearch {
+        hosts => ["http://elasticsearch-service.elk-stack:9200"]
+        index => "postgresql-%{+YYYY.MM.dd}"
+      }
+      stdout { codec => rubydebug }
+    }

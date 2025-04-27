@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kibana-dashboards
+  namespace: elk-stack
+data:
+  postgresql-dashboard.ndjson: |
+    {
+      "id": "postgresql-overview",
+      "type": "dashboard",
+      "attributes": {
+        "title": "PostgreSQL Master-Slave Overview",
+        "description": "Overview of PostgreSQL master-slave metrics for airline-reservation-db",
+        "panelsJSON": "[]",
+        "refreshInterval": {
+          "pause": false,
+          "value": 10000
+        },
+        "timeRestore": false,
+        "kibanaSavedObjectMeta": {
+          "searchSourceJSON": "{\"filter\":[],\"query\":{\"language\":\"kuery\",\"query\":\"\"}}"
+        }
+      }
+    }
