@@ -25,7 +25,6 @@ data:
       - add_kubernetes_metadata:
           host: ${NODE_NAME}
           in_cluster: true
-          # Không dùng logs_path matcher nữa vì không cần thiết
       - drop_fields:
           fields: ["agent", "ecs", "input", "log"]
           ignore_missing: true
@@ -33,5 +32,4 @@ data:
     output.logstash:
       hosts: ["logstash-service.elk-stack.svc.cluster.local:5044"]
       loadbalance: true
-      # Thêm setting timeout để tăng độ ổn định
       timeout: 30s
