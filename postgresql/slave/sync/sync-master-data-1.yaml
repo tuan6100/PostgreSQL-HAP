@@ -2,6 +2,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: sync-master-data-1
+  namespace: default
 spec:
   backoffLimit: 5
   template:

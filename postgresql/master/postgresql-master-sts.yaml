@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: postgresql-master
+  namespace: default
   labels:
     component: postgresql-master
 spec:

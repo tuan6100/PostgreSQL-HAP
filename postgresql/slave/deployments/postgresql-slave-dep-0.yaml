@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: postgresql-slave-0
+  namespace: default
   labels:
     component: postgresql-slave
 spec:
