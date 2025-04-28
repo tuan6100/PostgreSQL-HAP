@@ -22,6 +22,11 @@ data:
     lc_time = 'en_US.utf8'
     default_text_search_config = 'pg_catalog.english'
     hot_standby = on
+  
+    shared_preload_libraries = 'auto_explain'
+    auto_explain.log_min_duration = 0
+    auto_explain.log_analyze = on
+
   pg_hba.conf: |
     # TYPE  DATABASE        USER            ADDRESS                 METHOD
     local   all             all                                     trust

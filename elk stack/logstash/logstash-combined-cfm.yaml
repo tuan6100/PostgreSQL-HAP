@@ -62,6 +62,7 @@ data:
         grok {
           match => { "message" => "^%{TIMESTAMP_ISO8601:timestamp} \[%{NUMBER:pid}\] %{WORD:log_level}:  %{GREEDYDATA:log_message}" }
         }
+    
         if [log_message] =~ "statement:" {
           grok {
             match => { "log_message" => ".*statement: (?<sql_query>.*)" }
@@ -78,6 +79,55 @@ data:
             mutate { add_field => { "query_type" => "DDL" } }
           } else {
             mutate { add_field => { "query_type" => "OTHER" } }
+          }
+        }
+
+        if [log_message] =~ "duration:" {
+          grok {
+            match => { "log_message" => "duration: %{NUMBER:query_duration:float} ms" }
+            tag_on_failure => ["explain_duration_parse_failure"]
+          }
+    
+          grok {
+            match => { "log_message" => ".*plan:\s+Query Text: (?<query_text>[^;]+);" }
+            tag_on_failure => ["explain_query_parse_failure"]
+          }
+    
+          grok {
+            match => { "log_message" => ".*plan:\s+(?<execution_plan>.*)" }
+            tag_on_failure => ["explain_plan_parse_failure"]
+          }
+    
+          if [execution_plan] {
+            grok {
+              match => { "execution_plan" => "(?<scan_type>(Seq Scan|Index Scan|Index Only Scan|Bitmap Heap Scan|Bitmap Index Scan|Nested Loop|Hash Join|Merge Join|Sort|Limit|Aggregate|GroupAggregate|HashAggregate))" }
+              tag_on_failure => []
+            }
+    
+            grok {
+              match => { "execution_plan" => "cost=%{NUMBER:cost_start:float}\.\.%{NUMBER:cost_end:float}" }
+              tag_on_failure => []
+            }
+    
+            grok {
+              match => { "execution_plan" => "rows=%{NUMBER:estimated_rows:integer}" }
+              tag_on_failure => []
+            }
+    
+            grok {
+              match => { "execution_plan" => "actual time=%{NUMBER:actual_time_start:float}\.\.%{NUMBER:actual_time_end:float}" }
+              tag_on_failure => []
+            }
+    
+            grok {
+              match => { "execution_plan" => "rows=%{NUMBER}.*actual.*rows=%{NUMBER:actual_rows:integer}" }
+              tag_on_failure => []
+            }
+          }
+    
+          mutate { 
+            add_field => { "event_type" => "explain_analyze" }
+            add_tag => ["execution_plan"]
           }
         }
 
@@ -117,6 +167,12 @@ data:
       date {
         match => ["timestamp", "ISO8601"]
         target => "@timestamp"
+      }
+    
+      if "execution_plan" in [tags] {
+        mutate {
+          remove_tag => ["_grokparsefailure"]
+        }
       }
     }
     
