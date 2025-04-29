@@ -63,6 +63,7 @@ data:
           match => { "message" => "^%{TIMESTAMP_ISO8601:timestamp} \[%{NUMBER:pid}\] %{WORD:log_level}:  %{GREEDYDATA:log_message}" }
         }
     
+        # Phân tích các truy vấn SQL
         if [log_message] =~ "statement:" {
           grok {
             match => { "log_message" => ".*statement: (?<sql_query>.*)" }
@@ -89,12 +90,12 @@ data:
           }
     
           grok {
-            match => { "log_message" => ".*plan:\s+Query Text: (?<query_text>[^;]+);" }
+            match => { "log_message" => ".*plan: Query Text: (?<query_text>[^;]+);" }
             tag_on_failure => ["explain_query_parse_failure"]
           }
     
           grok {
-            match => { "log_message" => ".*plan:\s+(?<execution_plan>.*)" }
+            match => { "log_message" => ".*plan: (?<execution_plan>.*)" }
             tag_on_failure => ["explain_plan_parse_failure"]
           }
     
@@ -115,6 +116,11 @@ data:
             }
     
             grok {
+              match => { "execution_plan" => "width=%{NUMBER:width:integer}" }
+              tag_on_failure => []
+            }
+    
+            grok {
               match => { "execution_plan" => "actual time=%{NUMBER:actual_time_start:float}\.\.%{NUMBER:actual_time_end:float}" }
               tag_on_failure => []
             }
@@ -123,11 +129,49 @@ data:
               match => { "execution_plan" => "rows=%{NUMBER}.*actual.*rows=%{NUMBER:actual_rows:integer}" }
               tag_on_failure => []
             }
+    
+            grok {
+              match => { "execution_plan" => "loops=%{NUMBER:loops:integer}" }
+              tag_on_failure => []
+            }
+    
+            grok {
+              match => { "execution_plan" => "Filter: (?<filter_condition>.*?) (Rows Removed|$)" }
+              tag_on_failure => []
+            }
+    
+            grok {
+              match => { "execution_plan" => "Rows Removed by Filter: %{NUMBER:rows_removed:integer}" }
+              tag_on_failure => []
+            }
+          }
+    
+          if [actual_time_end] and [loops] {
+            ruby {
+              code => "
+                if event.get('actual_time_end') && event.get('loops')
+                  total_time = event.get('actual_time_end').to_f * event.get('loops').to_f
+                  event.set('total_execution_time', total_time)
+                end
+              "
+            }
+          }
+    
+          if [estimated_rows] and [actual_rows] {
+            ruby {
+              code => "
+                if event.get('estimated_rows') && event.get('actual_rows') && event.get('estimated_rows') > 0
+                  estimation_ratio = event.get('actual_rows').to_f / event.get('estimated_rows').to_f
+                  event.set('estimation_accuracy', estimation_ratio)
+                end
+              "
+            }
           }
     
           mutate { 
             add_field => { "event_type" => "explain_analyze" }
             add_tag => ["execution_plan"]
+            remove_tag => ["_grokparsefailure"]
           }
         }
 
@@ -167,12 +211,6 @@ data:
       date {
         match => ["timestamp", "ISO8601"]
         target => "@timestamp"
-      }
-    
-      if "execution_plan" in [tags] {
-        mutate {
-          remove_tag => ["_grokparsefailure"]
-        }
       }
     }
     

@@ -7,7 +7,7 @@ data:
   standby.signal: ""
   postgresql-slave.conf: |
     listen_addresses = '*'
-    max_connections = 300
+    max_connections = 500
     shared_buffers = 128MB
     dynamic_shared_memory_type = posix
     max_wal_size = 1GB
@@ -22,6 +22,23 @@ data:
     lc_time = 'en_US.utf8'
     default_text_search_config = 'pg_catalog.english'
     hot_standby = on
+    
+    log_directory = '/var/lib/postgresql/data/pg_log' 
+    log_timezone = 'Etc/UTC+7'
+    log_destination = 'stderr'
+    logging_collector = on
+    log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+    log_truncate_on_rotation = off
+    log_rotation_age = 1d
+    log_rotation_size = 100MB
+    log_statement = 'all'
+    log_min_duration_statement = 5000
+    log_connections = on
+    log_disconnections = on
+    log_min_error_statement = warning
+    log_min_messages = warning
+    log_lock_waits = on
+    log_temp_files = 0
   
     shared_preload_libraries = 'auto_explain'
     auto_explain.log_min_duration = 0

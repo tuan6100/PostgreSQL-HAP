@@ -12,7 +12,7 @@ data:
           - /var/lib/postgresql/data/pg_log/*.log
         fields:
           log_type: postgresql
-          kubernetes.pod.name: "postgresql-master-0"
+          kubernetes.pod.name: "postgresql-log"
           kubernetes.namespace: "default"
           kubernetes.container.name: "postgresql"
         fields_under_root: true
