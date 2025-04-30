@@ -21,7 +21,7 @@ data:
     default_text_search_config = 'pg_catalog.english'
 
     wal_level = replica
-    max_wal_senders = 3
+    max_wal_senders = 5
     max_replication_slots = 5
     synchronous_commit = off
     wal_keep_size = 1GB  

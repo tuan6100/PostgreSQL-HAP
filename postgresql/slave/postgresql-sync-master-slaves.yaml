@@ -1,0 +1,27 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-replication-slots
+  namespace: default
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: create-slots
+          image: postgres:16
+          command:
+            - sh
+            - -c
+            - |
+              for i in $(seq 1 30); do
+                pg_isready -h postgresql-master -U tuan && break
+                echo "Waiting for PostgreSQL master to be ready... ($i/30)"
+                sleep 5
+              done
+              
+              for i in $(seq 0 2); do
+                echo "Creating replication slot replica_slot_$i"
+                PGPASSWORD="20226100" psql -h postgresql-master -U tuan -c "SELECT pg_create_physical_replication_slot('replica_slot_$i', true);"
+              done
