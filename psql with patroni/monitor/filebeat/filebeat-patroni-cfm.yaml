@@ -17,9 +17,25 @@ data:
           var.paths: ["/var/lib/postgresql/data/pgroot/data/pg_log/*.csv"]
     
     processors:
+      - decode_csv_fields:
+          fields:
+            message: postgresql.csv
+          separator: ","
+          ignore_missing: false
+          overwrite_keys: true
+          trim_leading_space: false
+          fail_on_error: true
       - add_kubernetes_metadata:
           host: ${NODE_NAME}
+          kube_config: $Filebeat Reference/.kube/config
           in_cluster: true
+          default_indexers.enabled: false
+          default_matchers.enabled: false
+          indexers:
+            - ip_port:
+          matchers:
+            - fields:
+              lookup_fields: ["metricset.host"]
       - drop_fields:
           fields: ["agent", "ecs", "input", "log"]
           ignore_missing: true
@@ -30,6 +46,7 @@ data:
         enabled: true
     
     setup.template.enabled: false
+    setup.dashboards.enabled: true
     
     setup.ilm.enabled: true
     setup.ilm.rollover_alias: "filebeat"
