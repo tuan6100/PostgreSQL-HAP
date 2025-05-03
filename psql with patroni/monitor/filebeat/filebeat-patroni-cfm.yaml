@@ -26,14 +26,11 @@ data:
 
     output.elasticsearch:
       hosts: ["${ELASTICSEARCH_HOST}"]
-      # Cấu hình data_stream
       data_stream:
         enabled: true
     
-    # Vô hiệu hóa template setup tự động
     setup.template.enabled: false
     
-    # Cấu hình ILM
     setup.ilm.enabled: true
     setup.ilm.rollover_alias: "filebeat"
     setup.ilm.pattern: "{now/d}-000001"
