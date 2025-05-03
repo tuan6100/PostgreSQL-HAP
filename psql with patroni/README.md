@@ -1,0 +1,70 @@
+# High Availability in PostgreSQL with Patroni and Kubernetes
+
+> [!NOTE]
+> These files are based on the original from [Patroni Official Repository](https://github.com/patroni/patroni/tree/master/kubernetes)
+
+## Kubernetes deployment examples
+
+Below you will find examples of Patroni deployments using [kind](https://kind.sigs.k8s.io/).
+
+## Patroni on K8s
+
+The Patroni cluster deployment with a StatefulSet consisting of three Pods.
+
+Example session:
+
+$ kind create cluster
+Creating cluster "kind" ...
+ ✓ Ensuring node image (kindest/node:v1.25.3) 🖼
+ ✓ Preparing nodes 📦
+ ✓ Writing configuration 📜
+ ✓ Starting control-plane 🕹️
+ ✓ Installing CNI 🔌
+ ✓ Installing StorageClass 💾
+Set kubectl context to "kind-kind"
+You can now use your cluster with:
+
+kubectl cluster-info --context kind-kind
+
+Thanks for using kind! 😊
+
+$ docker build -t patroni .
+Sending build context to Docker daemon  138.8kB
+Step 1/9 : FROM postgres:16
+...
+Successfully built e9bfe69c5d2b
+Successfully tagged patroni:latest
+
+$ kind load docker-image patroni
+Image: "" with ID "sha256:e9bfe69c5d2b319dec0cf564fb895484537664775e18f37f9b707914cc5537e6" not yet present on node "kind-control-plane", loading...
+
+$ kubectl apply -f patroni_k8s.yaml -n <YOUR NAMESPACE>
+service/patroni-config created
+statefulset.apps/patroni created
+endpoints/patroni created
+service/patroni created
+service/patroni-repl created
+secret/patroni created
+serviceaccount/patroni created
+role.rbac.authorization.k8s.io/patroni created
+rolebinding.rbac.authorization.k8s.io/patroni created
+clusterrole.rbac.authorization.k8s.io/patroni-k8s-ep-access created
+clusterrolebinding.rbac.authorization.k8s.io/patroni-k8s-ep-access created
+
+$  kubectl get pods -n patroni -L role
+NAME        READY   STATUS    RESTARTS   AGE     ROLE
+patroni-0   4/4     Running   0          2m13s   primary
+patroni-1   4/4     Running   0          113s    replica
+patroni-2   4/4     Running   0          56s     replica
+patroni-3   4/4     Running   0          31s     replica
+
+
+$ kubectl exec -ti patroni-0 -- bash
+postgres@patroni-0:~$ patronictl list
++ Cluster: patroni (7186662553319358497) ----+----+-----------+
+| Member        | Host       | Role    | State   | TL | Lag in MB |
++---------------+------------+---------+---------+----+-----------+
+| patroni-0 | 10.244.0.5 | Leader  | running |  1 |           |
+| patroni-1 | 10.244.0.6 | Replica | running |  1 |         0 |
+| patroni-2 | 10.244.0.7 | Replica | running |  1 |         0 |
++---------------+------------+---------+---------+----+-----------+

@@ -109,3 +109,8 @@ CREATE TABLE "Invoice" (
    "unpaid_amount" BIGINT NOT NULL DEFAULT 0,
    "issue_date" TIMESTAMP NOT NULL
 );
+
+grant select on table pg_stat_bgwriter to tuan;
+grant select on table pg_stat_activity to tuan;
+grant select on table pg_stat_database to tuan;
+grant select on table pg_stat_statements to tuan;

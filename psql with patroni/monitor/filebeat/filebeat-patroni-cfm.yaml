@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: filebeat-patroni-config
+  namespace: patroni
+data:
+  filebeat.yml: |-
+    filebeat.config:
+      modules:
+        path: ${path.config}/modules.d/*.yml
+        reload.enabled: true
+    
+    filebeat.modules:
+      - module: postgresql
+        log:
+          enabled: true
+          var.paths: ["/var/lib/postgresql/data/pgroot/data/pg_log/*.csv"]
+    
+    processors:
+      - add_kubernetes_metadata:
+          host: ${NODE_NAME}
+          in_cluster: true
+      - drop_fields:
+          fields: ["agent", "ecs", "input", "log"]
+          ignore_missing: true
+
+    output.elasticsearch:
+      hosts: ["${ELASTICSEARCH_HOST}"]
+      # Cấu hình data_stream
+      data_stream:
+        enabled: true
+    
+    # Vô hiệu hóa template setup tự động
+    setup.template.enabled: false
+    
+    # Cấu hình ILM
+    setup.ilm.enabled: true
+    setup.ilm.rollover_alias: "filebeat"
+    setup.ilm.pattern: "{now/d}-000001"
+    
+    setup.kibana:
+      host: "${KIBANA_HOST}"

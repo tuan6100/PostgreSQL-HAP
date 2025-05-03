@@ -1,0 +1,60 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: metricbeat-patroni-config
+  namespace: patroni
+data:
+  metricbeat.yml: |-
+    metricbeat.config:
+      modules:
+        path: ${path.config}/modules.d/*.yml
+        reload.enabled: true
+
+    metricbeat.autodiscover:
+      providers:
+        - type: kubernetes
+          scope: node
+          node: ${NODE_NAME}
+          hints.enabled: true
+
+    metricbeat.modules:
+      - module: postgresql
+        enabled: true
+        metricsets:
+          - database
+          - bgwriter
+          - activity
+          - statement
+        period: 10s
+        hosts: ["postgresql://localhost:5432/airline_reservation_db?sslmode=disable"]
+        username: tuan
+        password: ${DB_PASSWORD}
+
+    processors:
+      - add_cloud_metadata: ~
+      - add_kubernetes_metadata:
+          host: ${NODE_NAME}
+          matchers:
+            - logs_path:
+                logs_path: "/var/log/containers/"
+
+    setup.dashboards.enabled: true
+    ssl.verification_mode: "none"
+    
+    # Vô hiệu hóa template setup tự động
+    setup.template.enabled: false
+    
+    # Cấu hình ILM
+    setup.ilm.enabled: true
+    setup.ilm.rollover_alias: "filebeat"
+    setup.ilm.pattern: "{now/d}-000001"
+    
+    # Sử dụng index thông thường thay vì data stream
+    output.elasticsearch:
+      hosts: ["${ELASTICSEARCH_HOST}"]
+      index: "metricbeat-%{[agent.version]}"
+
+    setup.kibana:
+      host: "${KIBANA_HOST}"
+    
+    logging.level: info

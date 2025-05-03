@@ -1,0 +1,429 @@
+# headless service to avoid deletion of patroni-config endpoint
+apiVersion: v1
+kind: Service
+metadata:
+  name: patroni-config
+  namespace: patroni
+  labels:
+    application: patroni
+    cluster-name: patroni
+spec:
+  clusterIP: None
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: patroni
+  namespace: patroni
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: &cluster_name patroni
+  namespace: patroni
+  labels:
+    application: patroni
+    cluster-name: *cluster_name
+spec:
+  replicas: 4  # 1 master + 3 slaves
+  serviceName: *cluster_name
+  selector:
+    matchLabels:
+      application: patroni
+      cluster-name: *cluster_name
+  template:
+    metadata:
+      labels:
+        application: patroni
+        cluster-name: *cluster_name
+    spec:
+      serviceAccountName: patroni
+      securityContext:
+        fsGroup: 26
+      # Thêm initContainer để sửa quyền truy cập thư mục logs
+      initContainers:
+        - name: fix-permissions
+          image: busybox
+          command: ['sh', '-c', 'mkdir -p /home/postgres/pgdata/pgroot/data/pg_log && chmod -R 777 /home/postgres/pgdata/pgroot/data/pg_log && chown -R 999:999 /home/postgres/pgdata/pgroot/data/pg_log']
+          volumeMounts:
+            - mountPath: /home/postgres/pgdata
+              name: pgdata
+      # Container chính
+      containers:
+        - name: *cluster_name
+          image: patroni
+          imagePullPolicy: IfNotPresent
+          readinessProbe:
+            httpGet:
+              scheme: HTTP
+              path: /readiness
+              port: 8008
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 3
+          ports:
+            - containerPort: 8008
+              protocol: TCP
+            - containerPort: 5432
+              protocol: TCP
+          volumeMounts:
+            - mountPath: /home/postgres/pgdata
+              name: pgdata
+          env:
+            - name: PATRONI_KUBERNETES_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: PATRONI_KUBERNETES_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: PATRONI_KUBERNETES_BYPASS_API_SERVICE
+              value: 'true'
+            - name: PATRONI_KUBERNETES_USE_ENDPOINTS
+              value: 'true'
+            - name: PATRONI_KUBERNETES_LABELS
+              value: '{application: patroni, cluster-name: patroni}'
+            - name: PATRONI_SUPERUSER_USERNAME
+              value: tuan
+            - name: PATRONI_SUPERUSER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: *cluster_name
+                  key: superuser-password
+            - name: PATRONI_REPLICATION_USERNAME
+              value: tuan
+            - name: PATRONI_REPLICATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: *cluster_name
+                  key: replication-password
+            - name: PATRONI_SCOPE
+              value: *cluster_name
+            - name: PATRONI_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: PATRONI_POSTGRESQL_DATA_DIR
+              value: /home/postgres/pgdata/pgroot/data
+            - name: PATRONI_POSTGRESQL_PGPASS
+              value: /tmp/pgpass
+            - name: PATRONI_POSTGRESQL_LISTEN
+              value: '0.0.0.0:5432'
+            - name: PATRONI_RESTAPI_LISTEN
+              value: '0.0.0.0:8008'
+            # Đảm bảo log_directory được cấu hình đúng trong PostgreSQL
+            - name: PATRONI_POSTGRESQL_PARAMETERS_log_directory
+              value: '/home/postgres/pgdata/pgroot/data/pg_log'
+            - name: PATRONI_POSTGRESQL_PARAMETERS_log_file_mode
+              value: '0644'  # Đặt mode để đảm bảo có thể đọc
+
+        # Metricbeat container
+        - name: metricbeat
+          image: docker.elastic.co/beats/metricbeat:8.13.0
+          args: ["-c", "/usr/share/metricbeat/metricbeat.yml", "-e"]
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: ELASTICSEARCH_HOST
+              value: "http://elasticsearch-service.elk-stack.svc.cluster.local:9200"
+            - name: KIBANA_HOST
+              value: "http://kibana-service.elk-stack.svc.cluster.local:5601"
+            - name: DB_USERNAME
+              value: tuan
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: *cluster_name
+                  key: superuser-password
+          securityContext:
+            runAsUser: 0
+          resources:
+            limits:
+              memory: 300Mi
+            requests:
+              cpu: 100m
+              memory: 100Mi
+          volumeMounts:
+            - name: metricbeat-config
+              mountPath: /usr/share/metricbeat/metricbeat.yml
+              readOnly: false
+              subPath: metricbeat.yml
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+              readOnly: true
+            - name: proc
+              mountPath: /hostfs/proc
+              readOnly: true
+            - name: cgroup
+              mountPath: /hostfs/sys/fs/cgroup
+              readOnly: true
+            - name: dockersock
+              mountPath: /var/run/docker.sock
+              readOnly: true
+
+        # Filebeat container
+        - name: filebeat
+          image: docker.elastic.co/beats/filebeat:8.13.0
+          args: ["-c", "/usr/share/filebeat/filebeat.yml", "-e"]
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: ELASTICSEARCH_HOST
+              value: "http://elasticsearch-service.elk-stack.svc.cluster.local:9200"
+            - name: KIBANA_HOST
+              value: "http://kibana-service.elk-stack.svc.cluster.local:5601"
+          securityContext:
+            runAsUser: 0
+          resources:
+            limits:
+              memory: 200Mi
+            requests:
+              cpu: 100m
+              memory: 100Mi
+          volumeMounts:
+            - name: filebeat-config
+              mountPath: /usr/share/filebeat/filebeat.yml
+              readOnly: false
+              subPath: filebeat.yml
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+              readOnly: true
+
+        # Thêm log-copier sidecar để chắc chắn filebeat có thể đọc logs
+        - name: log-copier
+          image: busybox
+          command: ["/bin/sh", "-c", "while true; do find /home/postgres/pgdata/pgroot/data/pg_log -type f -exec chmod 644 {} \\; 2>/dev/null || true; sleep 10; done"]
+          volumeMounts:
+            - name: pgdata
+              mountPath: /home/postgres/pgdata
+              readOnly: false
+          resources:
+            limits:
+              memory: 50Mi
+            requests:
+              cpu: 10m
+              memory: 20Mi
+
+      # Volumes
+      volumes:
+        - name: metricbeat-config
+          configMap:
+            name: metricbeat-patroni-config
+            items:
+              - key: metricbeat.yml
+                path: metricbeat.yml
+        - name: filebeat-config
+          configMap:
+            name: filebeat-patroni-config
+            items:
+              - key: filebeat.yml
+                path: filebeat.yml
+        - name: proc
+          hostPath:
+            path: /proc
+        - name: cgroup
+          hostPath:
+            path: /sys/fs/cgroup
+        - name: dockersock
+          hostPath:
+            path: /var/run/docker.sock
+  volumeClaimTemplates:
+    - metadata:
+        labels:
+          application: patroni
+          cluster-name: patroni
+        name: pgdata
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
+
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: &cluster_name patroni
+  namespace: patroni
+  labels:
+    application: patroni
+    cluster-name: *cluster_name
+subsets: []
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: &cluster_name patroni-primary
+  namespace: patroni
+  labels:
+    application: patroni
+    cluster-name: *cluster_name
+spec:
+  type: NodePort
+  ports:
+    - port: 5432
+      targetPort: 5432
+      nodePort: 31432
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: patroni-repl
+  namespace: patroni
+  labels:
+    application: patroni
+    cluster-name:  &cluster_name patroni
+    role: replica
+spec:
+  type: NodePort
+  selector:
+    application: patroni
+    cluster-name: *cluster_name
+    role: replica
+  ports:
+    - port: 5432
+      targetPort: 5432
+      nodePort: 31433
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: &cluster_name patroni
+  namespace: patroni
+  labels:
+    application: patroni
+    cluster-name: *cluster_name
+type: Opaque
+data:
+  superuser-password: MjAyMjYxMDA= # Your base64 encoded password
+  replication-password: MjAyMjYxMDA= # Your base64 encoded password
+
+
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: patroni
+  namespace: patroni
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - create
+      - get
+      - list
+      - patch
+      - update
+      - watch
+      # delete and deletecollection are required only for 'patronictl remove'
+      - delete
+      - deletecollection
+  - apiGroups:
+      - ""
+    resources:
+      - endpoints
+    verbs:
+      - get
+      - patch
+      - update
+      # the following three privileges are necessary only when using endpoints
+      - create
+      - list
+      - watch
+      # delete and deletecollection are required only for for 'patronictl remove'
+      - delete
+      - deletecollection
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  # The following privilege is only necessary for creation of headless service
+  # for patroni-config endpoint, in order to prevent cleaning it up by the
+  # k8s master. You can avoid giving this privilege by explicitly creating the
+  # service like it is done in this manifest (lines 2..10)
+  - apiGroups:
+      - ""
+    resources:
+      - services
+    verbs:
+      - create
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: patroni
+  namespace: patroni
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: patroni
+subjects:
+  - kind: ServiceAccount
+    name: patroni
+
+# Following privileges are only required if deployed not in the "default"
+# namespace and you want Patroni to bypass kubernetes service
+# (PATRONI_KUBERNETES_BYPASS_API_SERVICE=true)
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: patroni-k8s-ep-access
+  namespace: patroni
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - endpoints
+    resourceNames:
+      - kubernetes
+    verbs:
+      - get
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: patroni-k8s-ep-access
+  namespace: patroni
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: patroni-k8s-ep-access
+subjects:
+  - kind: ServiceAccount
+    name: patroni
+    # The namespace must be specified explicitly.
+    # If deploying to the different namespace you have to change it.
+    namespace: patroni
