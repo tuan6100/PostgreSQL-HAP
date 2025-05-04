@@ -1,0 +1,60 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgresql-daily-backup
+  namespace: default
+spec:
+  schedule: "0 0 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          hostNetwork: true
+          containers:
+            - name: postgres-backup
+              image: postgres:16
+              command: ["/bin/bash"]
+              args: ["/scripts/backup.sh"]
+              env:
+                - name: MASTER_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgresql-backup-credentials
+                      key: master-username
+                - name: MASTER_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgresql-backup-credentials
+                      key: master-password
+                - name: MASTER_DB
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgresql-backup-credentials
+                      key: master-db
+                - name: LOCAL_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgresql-backup-credentials
+                      key: local-username
+                - name: LOCAL_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgresql-backup-credentials
+                      key: local-password
+                - name: LOCAL_DB
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgresql-backup-credentials
+                      key: local-db
+              volumeMounts:
+                - name: backup-script
+                  mountPath: /scripts
+          volumes:
+            - name: backup-script
+              configMap:
+                name: postgresql-backup-script
+                defaultMode: 0755
+          restartPolicy: OnFailure

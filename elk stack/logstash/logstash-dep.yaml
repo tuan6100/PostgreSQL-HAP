@@ -26,7 +26,7 @@ spec:
               mountPath: /drivers
       containers:
         - name: logstash
-          image: docker.elastic.co/logstash/logstash:7.17.7
+          image: docker.elastic.co/logstash/logstash:9.0.0
           env:
             - name: ELASTICSEARCH_HOSTS
               value: http://elasticsearch-service.elk-stack:9200

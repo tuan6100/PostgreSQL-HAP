@@ -17,11 +17,17 @@ spec:
     spec:
       containers:
         - name: kibana
-          image: docker.elastic.co/kibana/kibana:7.17.7
+          image: docker.elastic.co/kibana/kibana:9.0.0
           ports:
             - containerPort: 5601
           env:
             - name: ELASTICSEARCH_HOSTS
               value: http://elasticsearch-service:9200
-            - name: XPACK_SECURITY_ENABLED
-              value: "false"
+          volumeMounts:
+            - name: kibana-config
+              mountPath: /usr/share/kibana/config/kibana.yml
+              subPath: kibana.yml
+      volumes:
+        - name: kibana-config
+          configMap:
+            name: kibana-config

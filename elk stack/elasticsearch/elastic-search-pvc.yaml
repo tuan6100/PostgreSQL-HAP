@@ -1,4 +1,3 @@
-# elasticsearch-pvc.yaml
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

@@ -18,7 +18,7 @@ data:
         },
         "timeRestore": false,
         "kibanaSavedObjectMeta": {
-          "searchSourceJSON": "{\"filter\":[],\"query\":{\"language\":\"kuery\",\"query\":\"\"}}"
+          "searchSourceJSON": "{\"filter\":[],\"query\":{\"language\":\"query\",\"query\":\"\"}}"
         }
       }
     }
