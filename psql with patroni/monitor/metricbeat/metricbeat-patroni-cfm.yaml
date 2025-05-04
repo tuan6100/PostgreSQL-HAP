@@ -44,7 +44,7 @@ data:
     setup.template.enabled: false
     
     setup.ilm.enabled: true
-    setup.ilm.rollover_alias: "filebeat"
+    setup.ilm.rollover_alias: "metricbeat"
     setup.ilm.pattern: "{now/d}-000001"
     
     output.elasticsearch:

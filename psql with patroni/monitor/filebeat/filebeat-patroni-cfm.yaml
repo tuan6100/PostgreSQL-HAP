@@ -5,52 +5,77 @@ metadata:
   namespace: patroni
 data:
   filebeat.yml: |-
-    filebeat.config:
-      modules:
-        path: ${path.config}/modules.d/*.yml
-        reload.enabled: true
-    
     filebeat.modules:
       - module: postgresql
         log:
           enabled: true
           var.paths: ["/var/lib/postgresql/data/pgroot/data/pg_log/*.csv"]
     
+    filebeat.input:
+      - type: filestream
+        id: postgresql-filestream-id
+        enabled: true
+        parsers:
+          - multiline:
+            type: pattern
+            pattern: '^\[\d+\]'
+            negate: true
+            match: after
+      
+    filebeat.autodiscover:
+      providers:
+        - type: kubernetes
+          node: ${NODE_NAME}
+          hints.enabled: true
+          use_kubeadm: true
+          hints.default_config:
+            type: filestream
+            id: kubernetes-container-logs-${data.kubernetes.pod.name}-${data.kubernetes.container.id}
+    
     processors:
-      - decode_csv_fields:
+      - dissect:
+          tokenizer: '"%{postgresql.log.timestamp} UTC,\"%{user.name}\",\"%{postgresql.log.database}\",%{process.pid},\"%{postgresql.log.client_addr}:%{postgresql.log.client_port}\",%{postgresql.log.session_id},%{postgresql.log.session_line_num},\"%{postgresql.log.command_tag}\",\"%{postgresql.log.session_start_time} UTC\",%{postgresql.log.virtual_transaction_id}/%{postgresql.log.transaction_id},%{log.level},%{postgresql.log.sql_state_code},\"%{+message}"%{?}",%{+remaining_fields}"'
+          field: "message"
+          target_prefix: ""
+      - dissect:
+          when:
+            contains:
+              message: '"duration: '
+            not:
+              contains:
+                message: 'statement:'
+          tokenizer: '"%{postgresql.log.timestamp} UTC,\"%{user.name}\",\"%{postgresql.log.database}\",%{process.pid},\"%{postgresql.log.client_addr}:%{postgresql.log.client_port}\",%{postgresql.log.session_id},%{postgresql.log.session_line_num},\"%{postgresql.log.command_tag}\",\"%{postgresql.log.session_start_time} UTC\",%{postgresql.log.virtual_transaction_id}/%{postgresql.log.transaction_id},%{log.level},%{postgresql.log.sql_state_code},\"duration: %{duration_ms} ms\",%{?},%{?},%{?},%{?},%{?},%{?},%{?},\"%{?}\",\"%{postgresql.log.backend_type}\",%{?},%{postgresql.log.tracking_id}"'
+          field: "message"
+          target_prefix: ""
+      - convert:
           fields:
-            message: postgresql.csv
-          separator: ","
-          ignore_missing: false
-          overwrite_keys: true
-          trim_leading_space: false
-          fail_on_error: true
-      - add_kubernetes_metadata:
-          host: ${NODE_NAME}
-          kube_config: $Filebeat Reference/.kube/config
-          in_cluster: true
-          default_indexers.enabled: false
-          default_matchers.enabled: false
-          indexers:
-            - ip_port:
-          matchers:
-            - fields:
-              lookup_fields: ["metricset.host"]
-      - drop_fields:
-          fields: ["agent", "ecs", "input", "log"]
+            - {from: "process.pid", type: "integer"}
+            - {from: "postgresql.log.client_port", type: "integer"}
+            - {from: "postgresql.log.session_line_num", type: "integer"}
+            - {from: "postgresql.log.transaction_id", type: "integer"}
+            - {from: "duration_ms", to: "postgresql.log.duration_ms", type: "float"}
           ignore_missing: true
+          fail_on_error: false
 
     output.elasticsearch:
       hosts: ["${ELASTICSEARCH_HOST}"]
-      data_stream:
-        enabled: true
+      index: "filebeat-postgresql-%{+yyyy.MM.dd}"
     
-    setup.template.enabled: false
+    setup.template.name: "filebeat-postgresql"
+    setup.template.pattern: "filebeat-postgresql-*"
     setup.dashboards.enabled: true
     
-    setup.ilm.enabled: true
-    setup.ilm.rollover_alias: "filebeat"
-    setup.ilm.pattern: "{now/d}-000001"
+    setup.ilm.enabled: false
     
     setup.kibana:
       host: "${KIBANA_HOST}"
+    
+    logging.level: debug
+    logging.to_files: true
+    logging.files:
+      path: "/usr/share/filebeat/logs"
+      name: "filebeat"
+      keepfiles: 10
+      permissions: 0640
+    logging.selectors: ["harvester", "input"]
+    

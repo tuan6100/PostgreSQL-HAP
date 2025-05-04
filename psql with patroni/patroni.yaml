@@ -124,7 +124,7 @@ spec:
 
         # Metricbeat container
         - name: metricbeat
-          image: docker.elastic.co/beats/metricbeat:8.13.0
+          image: docker.elastic.co/beats/metricbeat:9.0.0
           args: ["-c", "/usr/share/metricbeat/metricbeat.yml", "-e"]
           env:
             - name: NODE_NAME
@@ -178,7 +178,7 @@ spec:
 
         # Filebeat container
         - name: filebeat
-          image: docker.elastic.co/beats/filebeat:8.13.0
+          image: docker.elastic.co/beats/filebeat:9.0.0
           args: ["-c", "/usr/share/filebeat/filebeat.yml", "-e"]
           env:
             - name: NODE_NAME
@@ -206,7 +206,6 @@ spec:
               mountPath: /var/lib/postgresql/data
               readOnly: true
 
-        # Thêm log-copier sidecar để chắc chắn filebeat có thể đọc logs
         - name: log-copier
           image: busybox
           command: ["/bin/sh", "-c", "while true; do find /home/postgres/pgdata/pgroot/data/pg_log -type f -exec chmod 644 {} \\; 2>/dev/null || true; sleep 10; done"]
