@@ -38,7 +38,7 @@ Successfully tagged patroni:latest
 $ kind load docker-image patroni
 Image: "" with ID "sha256:e9bfe69c5d2b319dec0cf564fb895484537664775e18f37f9b707914cc5537e6" not yet present on node "kind-control-plane", loading...
 
-$ kubectl apply -f patroni_k8s.yaml -n <YOUR NAMESPACE>
+$ kubectl apply -f patroni.yaml -n patroni
 service/patroni-config created
 statefulset.apps/patroni created
 endpoints/patroni created
