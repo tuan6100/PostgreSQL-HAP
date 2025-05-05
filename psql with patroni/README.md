@@ -62,13 +62,13 @@ patroni-3   4/4     Running   0          31s     replica
 $ kubectl exec -ti patroni-0 -n patroni -c patroni -- bash  <br />
 postgres@patroni-0:~$ patronictl list  <br />
 + Cluster: patroni (7499862650536149015) ------+----+-----------+  <br />
-  | Member    | Host       | Role    | State     | TL | Lag in MB |
-  +-----------+------------+---------+-----------+----+-----------+
-  | patroni-0 | 10.1.1.234 | Leader  | running   | 54 |           |
-  | patroni-1 | 10.1.1.235 | Replica | streaming | 54 |         0 |
-  | patroni-2 | 10.1.1.236 | Replica | streaming | 54 |         0 |
-  | patroni-3 | 10.1.1.237 | Replica | streaming | 54 |         0 |
-  +-----------+------------+---------+-----------+----+-----------+
+  | Member    | Host       | Role    | State     | TL | Lag in MB |  <br />
+  +-----------+------------+---------+-----------+----+-----------+  <br />
+  | patroni-0 | 10.1.1.234 | Leader  | running   | 54 |           |  <br />
+  | patroni-1 | 10.1.1.235 | Replica | streaming | 54 |         0 |  <br />
+  | patroni-2 | 10.1.1.236 | Replica | streaming | 54 |         0 |  <br />
+  | patroni-3 | 10.1.1.237 | Replica | streaming | 54 |         0 |  <br />
+  +-----------+------------+---------+-----------+----+-----------+  <br />
 
 Enable load balanced with HAProxy (High Availability Proxy)
 
