@@ -1,2 +1,2 @@
 # PostgreSQL-HAP
-PostgreSQL High Availability and Performance
+Set up a PostgreSQL High Availability and Performance Cluster with Kubernetes
