@@ -271,17 +271,25 @@ subsets: []
 apiVersion: v1
 kind: Service
 metadata:
-  name: &cluster_name patroni-primary
+  name: patroni-primary
   namespace: patroni
   labels:
     application: patroni
-    cluster-name: *cluster_name
+    cluster-name: patroni
 spec:
-  type: NodePort
+  clusterIP: None
+  selector:
+    application: patroni
+    cluster-name: patroni
+    role: primary
   ports:
     - port: 5432
       targetPort: 5432
-      nodePort: 31432
+      name: postgresql
+    - port: 8008
+      targetPort: 8008
+      name: patroni-api  # Add this name
+
 
 ---
 apiVersion: v1
@@ -291,18 +299,22 @@ metadata:
   namespace: patroni
   labels:
     application: patroni
-    cluster-name:  &cluster_name patroni
+    cluster-name: patroni
     role: replica
 spec:
-  type: NodePort
+  clusterIP: None
   selector:
     application: patroni
-    cluster-name: *cluster_name
+    cluster-name: patroni
     role: replica
   ports:
     - port: 5432
       targetPort: 5432
-      nodePort: 31433
+      name: postgresql
+    - port: 8008
+      targetPort: 8008
+      name: patroni-api  # Add this name
+
 
 ---
 apiVersion: v1

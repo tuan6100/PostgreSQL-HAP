@@ -70,3 +70,22 @@ postgres@patroni-0:~$ patronictl list
   | patroni-3 | 10.1.1.237 | Replica | streaming | 54 |         0 |
   +-----------+------------+---------+-----------+----+-----------+
 
+Enable load balanced with HAProxy (High Availability Proxy)
+
+$ kubectl apply -f haproxy-patroni-cfm.yaml
+$ kubectl apply -f haproxy-patroni-dep.yaml
+$ kubectl apply -f haproxy-patroni-svc.yaml
+$kubectl logs patroni-haproxy-...  -n patroni
+[NOTICE]   (1) : Initializing new worker (8)
+[NOTICE]   (1) : Loading success.
+Connect from 10.1.0.1:54522 to 10.1.2.0:8404 (stats/HTTP)
+Connect from 10.1.0.1:54538 to 10.1.2.0:8404 (stats/HTTP)
+Connect from 10.1.0.1:46490 to 10.1.2.0:8404 (stats/HTTP)
+Connect from 10.1.0.1:46500 to 10.1.2.0:8404 (stats/HTTP)
+Connect from 10.1.0.1:46512 to 10.1.2.0:8404 (stats/HTTP)
+
+## how to connect to PostgreSQL cluster from outside of K8s
+    - to primary
+        psql -h <localhost or node_ip > -p 30500 -U <username> -d <database_name>
+    - to one of the replicas 
+        psql -h <localhost or node_ip> -p 30500 -U <username> -d <database_name>

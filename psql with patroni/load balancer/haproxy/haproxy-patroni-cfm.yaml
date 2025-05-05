@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: patroni-haproxy-config
+  namespace: patroni
+data:
+  haproxy.cfg: |
+    global
+      maxconn 100
+      log stdout format raw local0
+
+    defaults
+      log global
+      mode tcp
+      retries 2
+      timeout client 30m
+      timeout connect 4s
+      timeout server 30m
+      timeout check 5s
+
+    listen stats
+      mode http
+      bind *:8404
+      stats enable
+      stats uri /
+      stats refresh 10s
+
+    frontend fe_postgresql
+      bind *:5432
+      option tcplog
+      default_backend be_postgresql_primary
+
+    backend be_postgresql_primary
+      option httpchk OPTIONS /primary  # Thay đổi từ /master thành /primary
+      http-check expect status 200
+      default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+      server patroni-primary patroni-primary.patroni.svc.cluster.local:5432 maxconn 100 check port 8008
+    
+    frontend fe_postgresql_read
+      bind *:5433
+      option tcplog
+      default_backend be_postgresql_replica
+
+    backend be_postgresql_replica
+      option httpchk OPTIONS /replica
+      http-check expect status 200
+      default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+      server patroni-repl patroni-repl.patroni.svc.cluster.local:5432 maxconn 100 check port 8008

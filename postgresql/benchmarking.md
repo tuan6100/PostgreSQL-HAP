@@ -15,7 +15,7 @@ Các kịch bản kiểm tra
 1. Kiểm tra đọc/ghi đồng thời
 ```Bash
 MAX_CONN=$(psql -U postgres -c "SHOW max_connections;" -t | tr -d ' ')
-pgbench -U $USER -c $MAX_CONN -j 8 -T 60 -P 10 test
+pgbench -U $USER -c $(($MAX_CONN * 80 / 100)) -j 8 -T 60 -P 10 test
 ```
 Kịch bản này mô phỏng số lượng kết nối đồng thời lớn nhất với 8 thread worker.
 Kết quả thu được:
