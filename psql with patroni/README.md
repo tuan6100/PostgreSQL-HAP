@@ -59,12 +59,14 @@ patroni-2   4/4     Running   0          56s     replica
 patroni-3   4/4     Running   0          31s     replica
 
 
-$ kubectl exec -ti patroni-0 -- bash
+$ kubectl exec -ti patroni-0 -n patroni -c patroni -- bash
 postgres@patroni-0:~$ patronictl list
-+ Cluster: patroni (7186662553319358497) ----+----+-----------+
-| Member        | Host       | Role    | State   | TL | Lag in MB |
-+---------------+------------+---------+---------+----+-----------+
-| patroni-0 | 10.244.0.5 | Leader  | running |  1 |           |
-| patroni-1 | 10.244.0.6 | Replica | running |  1 |         0 |
-| patroni-2 | 10.244.0.7 | Replica | running |  1 |         0 |
-+---------------+------------+---------+---------+----+-----------+
++ Cluster: patroni (7499862650536149015) ------+----+-----------+
+  | Member    | Host       | Role    | State     | TL | Lag in MB |
+  +-----------+------------+---------+-----------+----+-----------+
+  | patroni-0 | 10.1.1.234 | Leader  | running   | 54 |           |
+  | patroni-1 | 10.1.1.235 | Replica | streaming | 54 |         0 |
+  | patroni-2 | 10.1.1.236 | Replica | streaming | 54 |         0 |
+  | patroni-3 | 10.1.1.237 | Replica | streaming | 54 |         0 |
+  +-----------+------------+---------+-----------+----+-----------+
+
