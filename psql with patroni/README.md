@@ -1,6 +1,6 @@
 # High Availability in PostgreSQL with Patroni and HAProxy (Kubernetes manages the leader key)
 
-> **Note**
+>  [!NOTE]
 > These files are based on the original from the [Patroni Official Repository](https://github.com/patroni/patroni/tree/master/kubernetes)
 
 ## Kubernetes Deployment Examples
