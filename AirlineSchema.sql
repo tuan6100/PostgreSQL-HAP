@@ -157,8 +157,7 @@ CREATE TABLE "Payment" (
      "invoice_id" INTEGER NOT NULL REFERENCES "Invoice" ("invoice_id"),
      "amount" BIGINT NOT NULL,
      "payment_date" TIMESTAMP NOT NULL,
-     "p
-" VARCHAR NOT NULL
+     "payment_method" VARCHAR NOT NULL
 );
 
 
