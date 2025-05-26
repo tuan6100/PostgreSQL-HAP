@@ -38,7 +38,7 @@ CREATE TABLE "Aircraft" (
 
 CREATE TABLE "SeatClass" (
             "seat_class_id" SERIAL PRIMARY KEY,
-            "seat_class_name" VARCHAR UNIQUE NOT NULL,
+            "seat_class_name" VARCHAR NOT NULL,
             "airline_id" INTEGER NOT NULL REFERENCES "Airline" ("airline_id"),
             "price" INTEGER NOT NULL CHECK ("price" >= 0)
 );
@@ -61,7 +61,7 @@ CREATE TABLE "TicketOrder" (
 CREATE TABLE "Seat" (
        "seat_id" SERIAL PRIMARY KEY,
        "seat_class_id" INTEGER NOT NULL REFERENCES "SeatClass" ("seat_class_id"),
-       "aircraft_id" INTEGER NOT NULL REFERENCES "Aircraft" ("aircraft_id"),
+       "aircraft_id" INTEGER NOT NULL REFERENCES "Aircraft" (aircraft_id),
        "seat_code" VARCHAR NOT NULL,
        "is_available" BOOLEAN DEFAULT TRUE,
        "hold_until" TIMESTAMP,
