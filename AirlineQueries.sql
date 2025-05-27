@@ -1,171 +1,227 @@
 SELECT pg_read_file('/etc/hostname') AS hostname;
 
 CREATE OR REPLACE PROCEDURE book_ticket(
-    _flight_id INT,
-    _seat_id INT,
-    _customer_id INT,
-    _promotion_id INT DEFAULT NULL,
+    p_flight_id INT,
+    p_seat_id INT,
+    p_customer_id INT,
     OUT success BOOLEAN,
     OUT message TEXT,
-    OUT order_id INT
+    OUT p_order_id INT,
+    p_promotion_id INT DEFAULT NULL  -- Tham số DEFAULT cuối cùng
 ) LANGUAGE plpgsql AS $$
 DECLARE
-    _seat_version INT;
-    _is_available BOOLEAN;
-    _ticket_id INT;
-    _seat_class_id INT;
-    _price NUMERIC;
-    _discount_percent INT := 0;
-    _airline_id INT;
-    _max_tickets INT;
-    _ticket_count INT;
+    v_seat_version INT;
+    v_is_available BOOLEAN;
+    v_ticket_id INT;
+    v_seat_class_id INT;
+    v_price NUMERIC;
+    v_discount_percent INT := 0;
+    v_airline_id INT;
+    v_max_tickets INT;
+    v_ticket_count INT;
+    v_hold_until TIMESTAMP;
+    v_invoice_id INT;
+    v_total_amount BIGINT;
+    v_flight_departure_time TIMESTAMP;
 BEGIN
     SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+
     BEGIN
-        SELECT a.airline_id, a.max_tickets_per_order INTO _airline_id, _max_tickets
+        SELECT ac.airline_id, a.max_tickets_per_order, f.departure_time
+        INTO v_airline_id, v_max_tickets, v_flight_departure_time
         FROM "Flight" f
                  JOIN "Aircraft" ac ON f.aircraft_id = ac.aircraft_id
                  JOIN "Airline" a ON ac.airline_id = a.airline_id
-        WHERE f.flight_id = _flight_id;
-        SELECT COUNT(*) INTO _ticket_count
-        FROM "Ticket" t
-                 JOIN "BookedTicket" bt ON t.ticket_id = bt.ticket_id
-        WHERE t.flight_id = _flight_id AND bt.customer_id = _customer_id;
+        WHERE f.flight_id = p_flight_id
+          AND f.departure_time IS NOT NULL;
 
-        -- Kiểm tra giới hạn vé
-        IF _max_tickets IS NOT NULL AND _ticket_count >= _max_tickets THEN
-            success := false;
-            message := 'Vượt quá số lượng vé tối đa cho phép';
-            RETURN;
-        END IF;
-        SELECT s."version", s."is_available", s."seat_class_id"
-        INTO _seat_version, _is_available, _seat_class_id
-        FROM "Seat" s
-        WHERE s."seat_id" = _seat_id
-            FOR UPDATE;
         IF NOT FOUND THEN
             success := false;
-            message := 'Không tìm thấy ghế';
+            message := 'Flight not found';
             RETURN;
         END IF;
 
-        IF NOT _is_available THEN
+        SELECT COUNT(*) INTO v_ticket_count
+        FROM "Ticket" t
+                 JOIN "BookedTicket" bt ON t.ticket_id = bt.ticket_id
+                 JOIN "TicketOrder" ord ON bt.order_id = ord.order_id
+        WHERE t.flight_id = p_flight_id AND ord.customer_id = p_customer_id;
+
+        IF v_max_tickets IS NOT NULL AND v_ticket_count >= v_max_tickets THEN
             success := false;
-            message := 'Ghế đã được đặt';
+            message := 'Exceeded maximum number of tickets allowed per customer';
             RETURN;
         END IF;
+
+        SELECT s."version", s."is_available", s."seat_class_id", s."hold_until"
+        INTO v_seat_version, v_is_available, v_seat_class_id, v_hold_until
+        FROM "Seat" s
+        WHERE s."seat_id" = p_seat_id
+            FOR UPDATE;
+
+        IF NOT FOUND THEN
+            success := false;
+            message := 'Seat not found';
+            RETURN;
+        END IF;
+
+        IF NOT v_is_available AND (v_hold_until IS NULL OR v_hold_until > CURRENT_TIMESTAMP) THEN
+            success := false;
+            message := 'Seat is not available or being held by someone else';
+            RETURN;
+        END IF;
+
         IF NOT EXISTS (
             SELECT 1
             FROM "Flight" f
                      JOIN "Aircraft" ac ON f.aircraft_id = ac.aircraft_id
-                     JOIN "Seat" s ON s.airline_id = ac.airline_id
-            WHERE f.flight_id = _flight_id AND s.seat_id = _seat_id
+                     JOIN "Seat" s ON s.aircraft_id = ac.aircraft_id  -- Đúng reference
+            WHERE f.flight_id = p_flight_id AND s.seat_id = p_seat_id
         ) THEN
             success := false;
-            message := 'Ghế không thuộc về chuyến bay này';
+            message := 'Seat does not belong to this flight';
             RETURN;
         END IF;
-        SELECT sc."price" INTO _price
+
+        SELECT sc.price INTO v_price
         FROM "SeatClass" sc
-        WHERE sc."seat_class_id" = _seat_class_id;
-        IF _promotion_id IS NOT NULL THEN
-            SELECT p."discount_percent" INTO _discount_percent
-            FROM "Promotion" p
-            WHERE p."promotion_id" = _promotion_id
-              AND CURRENT_TIMESTAMP BETWEEN p."start_time" AND p."end_time";
-            IF NOT FOUND THEN
-                _discount_percent := 0;
-            END IF;
-        END IF;
-        UPDATE "Seat"
-        SET "is_available" = false,
-            "version" = _seat_version + 1
-        WHERE "seat_id" = _seat_id
-          AND "version" = _seat_version;
+        WHERE sc.seat_class_id = v_seat_class_id;
+
         IF NOT FOUND THEN
             success := false;
-            message := 'Ghế đã được đặt bởi người khác trong quá trình xử lý';
+            message := 'Seat class not found';
             RETURN;
         END IF;
-        INSERT INTO "TicketOrder" ("promotion_id", "total_price")
-        VALUES (_promotion_id, _price * (100 - _discount_percent) / 100)
-        RETURNING "order_id" INTO order_id;
-        INSERT INTO "Ticket" ("flight_id", "seat_id", "is_booked", "is_paid")
-        VALUES (_flight_id, _seat_id, true, false)
-        RETURNING "ticket_id" INTO _ticket_id;
-        INSERT INTO "BookedTicket" ("ticket_id", "customer_id", "order_id")
-        VALUES (_ticket_id, _customer_id, order_id);
-        INSERT INTO "Invoice" (
-            "order_id",
-            "paid_amount",
-            "unpaid_amount",
-            "issue_date"
+
+        IF p_promotion_id IS NOT NULL THEN
+            SELECT discount_percent INTO v_discount_percent
+            FROM "Voucher"
+            WHERE voucher_id = p_promotion_id
+              AND start_time <= CURRENT_TIMESTAMP
+              AND end_time >= CURRENT_TIMESTAMP;
+
+            IF NOT FOUND THEN
+                success := false;
+                message := 'Invalid or expired voucher';
+                RETURN;
+            END IF;
+        END IF;
+
+        v_total_amount := v_price * (100 - v_discount_percent) / 100;
+
+        INSERT INTO "TicketOrder" ("customer_id", "promotion_id")
+        VALUES (p_customer_id, p_promotion_id)
+        RETURNING order_id INTO p_order_id;
+
+        INSERT INTO "Ticket" (
+            "ticket_code",
+            "flight_id",
+            "flight_departure_time",
+            "seat_id",
+            "created_at",
+            "status"
         )
         VALUES (
-                   order_id,
-                   0,
-                   _price * (100 - _discount_percent) / 100,
-                   CURRENT_TIMESTAMP
-               );
+                   gen_random_uuid(),
+                   p_flight_id,
+                   v_flight_departure_time,
+                   p_seat_id,
+                   CURRENT_TIMESTAMP,
+                   1
+               )
+        RETURNING ticket_id INTO v_ticket_id;
+
+        INSERT INTO "BookedTicket" ("ticket_id", "order_id")
+        VALUES (v_ticket_id, p_order_id);
+
+        UPDATE "Seat"
+        SET "is_available" = false,
+            "version" = v_seat_version + 1,
+            "hold_until" = NULL
+        WHERE "seat_id" = p_seat_id
+          AND "version" = v_seat_version;
+        IF NOT FOUND THEN
+            success := false;
+            message := 'Seat was modified by another transaction';
+            RETURN;
+        END IF;
+
+        INSERT INTO "Invoice" ("order_id", "total_amount", "issue_date")
+        VALUES (p_order_id, v_total_amount, CURRENT_TIMESTAMP)
+        RETURNING invoice_id INTO v_invoice_id;
+
+        INSERT INTO "Payment" ("invoice_id", "amount", "payment_date", "payment_method")
+        VALUES (v_invoice_id, v_total_amount, CURRENT_TIMESTAMP, 'Credit Card');
 
         success := true;
-        message := 'Đặt vé thành công';
+        message := 'Ticket booked successfully. Order ID: ' || p_order_id;
+
         COMMIT;
+
     EXCEPTION WHEN OTHERS THEN
         ROLLBACK;
         success := false;
-        message := 'Lỗi: ' || SQLERRM;
-        order_id := NULL;
+        message := 'Booking failed: ' || SQLERRM;
     END;
 END;
 $$;
 
+
 CREATE OR REPLACE PROCEDURE hold_seat(
     p_seat_id INT,
     p_customer_id INT,
-    p_hold_minutes INT DEFAULT 15,
     OUT success BOOLEAN,
-    OUT message TEXT
+    OUT message TEXT,
+    p_hold_minutes INT DEFAULT 15
 ) LANGUAGE plpgsql AS $$
 DECLARE
-    _is_available BOOLEAN;
-    _seat_version INT;
+    v_is_available BOOLEAN;
+    v_seat_version INT;
+    v_hold_until TIMESTAMP;
 BEGIN
     SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+
     BEGIN
-        SELECT "is_available", "version" INTO _is_available, _seat_version
+        SELECT "is_available", "version", "hold_until"
+        INTO v_is_available, v_seat_version, v_hold_until
         FROM "Seat"
         WHERE "seat_id" = p_seat_id
             FOR UPDATE;
+
         IF NOT FOUND THEN
             success := false;
-            message := 'Không tìm thấy ghế';
+            message := 'Seat not found';
             RETURN;
         END IF;
-        IF NOT _is_available THEN
+
+        IF NOT v_is_available AND (v_hold_until IS NULL OR v_hold_until > CURRENT_TIMESTAMP) THEN
             success := false;
-            message := 'Ghế đã được đặt hoặc đang được giữ bởi người khác';
+            message := 'Seat is not available or being held by someone else';
             RETURN;
         END IF;
+
         UPDATE "Seat"
-        SET
-            "is_available" = false,
-            "version" = _seat_version + 1,
+        SET "is_available" = false,
+            "version" = v_seat_version + 1,
             "hold_until" = CURRENT_TIMESTAMP + (p_hold_minutes || ' minutes')::INTERVAL
         WHERE "seat_id" = p_seat_id
-          AND "version" = _seat_version;
+          AND "version" = v_seat_version;
+
         IF NOT FOUND THEN
             success := false;
-            message := 'Ghế đã bị thay đổi bởi người khác trong quá trình xử lý';
+            message := 'Seat was modified by another transaction';
             RETURN;
         END IF;
+
         success := true;
-        message := 'Đã giữ chỗ thành công, vui lòng hoàn tất đặt vé trong ' || p_hold_minutes || ' phút';
+        message := 'Seat held successfully. Please complete booking within ' || p_hold_minutes || ' minutes';
+
         COMMIT;
+
     EXCEPTION WHEN OTHERS THEN
         ROLLBACK;
         success := false;
-        message := 'Lỗi: ' || SQLERRM;
+        message := 'Hold failed: ' || SQLERRM;
     END;
 END;
 $$;
@@ -177,7 +233,8 @@ DECLARE
 BEGIN
     UPDATE "Seat"
     SET "is_available" = true,
-        "hold_until" = NULL
+        "hold_until" = NULL,
+        "version" = "version" + 1
     WHERE "hold_until" IS NOT NULL
       AND "hold_until" < CURRENT_TIMESTAMP;
 
@@ -187,14 +244,64 @@ END;
 $$ LANGUAGE plpgsql;
 
 
----- Sử dụng materialized view cho báo cáo và phân tích
+CREATE OR REPLACE PROCEDURE cancel_booking(
+    p_order_id INT,
+    p_customer_id INT,
+    OUT success BOOLEAN,
+    OUT message TEXT
+) LANGUAGE plpgsql AS $$
+DECLARE
+    v_ticket_record RECORD;
+BEGIN
+    SET TRANSACTION ISOLATION LEVEL REPEATABLE READ;
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM "TicketOrder"
+            WHERE order_id = p_order_id AND customer_id = p_customer_id
+        ) THEN
+            success := false;
+            message := 'Order not found or does not belong to customer';
+            RETURN;
+        END IF;
+        FOR v_ticket_record IN
+            SELECT t.seat_id
+            FROM "Ticket" t
+                     JOIN "BookedTicket" bt ON t.ticket_id = bt.ticket_id
+            WHERE bt.order_id = p_order_id
+            LOOP
+                UPDATE "Seat"
+                SET "is_available" = true,
+                    "hold_until" = NULL,
+                    "version" = "version" + 1
+                WHERE "seat_id" = v_ticket_record.seat_id;
+            END LOOP;
+        UPDATE "Ticket"
+        SET "status" = -1
+        WHERE ticket_id IN (
+            SELECT bt.ticket_id
+            FROM "BookedTicket" bt
+            WHERE bt.order_id = p_order_id
+        );
+        success := true;
+        message := 'Booking cancelled successfully';
+        COMMIT;
+    EXCEPTION WHEN OTHERS THEN
+        ROLLBACK;
+        success := false;
+        message := 'Cancellation failed: ' || SQLERRM;
+    END;
+END;
+$$;
+
+
+
 CREATE MATERIALIZED VIEW flight_availability_summary AS
 SELECT f.flight_id, f.departure_time,
        fr.departure_airport, fr.arrival_airport,
        COUNT(s.seat_id) AS total_seats,
        SUM(CASE WHEN s.is_available THEN 1 ELSE 0 END) AS available_seats
 FROM "Flight" f
-         JOIN "FlightRoute" fr ON f.route_id = fr.route_id
-         JOIN "Aircraft" a ON f.aircraft_id = a.aircraft_id
-         JOIN "Seat" s ON a.airline_id = s.airline_id
+        JOIN "FlightRoute" fr ON f.route_id = fr.route_id
+        JOIN "Aircraft" a ON f.aircraft_id = a.aircraft_id
+        JOIN "Seat" s ON a.aircraft_id = s.aircraft_id
 GROUP BY f.flight_id, f.departure_time, fr.departure_airport, fr.arrival_airport;
